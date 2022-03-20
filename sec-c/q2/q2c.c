@@ -4,6 +4,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/wait.h>
+#include <unistd.h>
 
 #include "linenoise.h"
 
@@ -270,14 +272,30 @@ struct token_vec *tokenise(char *line) {
 
 int main(void) {
   char *line;
+  struct token_vec *vec;
+  char **list;
+  pid_t fork_pid;
+  int status;
 
   while ((line = linenoise("> ")) != NULL) {
     if (*line != '\0') {
-      struct token_vec *vec = tokenise(line);
-      char **list = token_vec_get_list(vec);
+      vec = tokenise(line);
+      list = token_vec_get_list(vec);
 
-      for (int i = 0; list[i] != NULL; i++) {
-        printf("echo: %s\n", list[i]);
+      if ((fork_pid = fork()) == -1) {
+        die("fork:");
+      } else if (fork_pid > 0) { // Parent
+        if (waitpid(fork_pid, &status, 0) == -1) {
+          die("waitpid:");
+        }
+
+        if (WIFEXITED(status)) {
+          printf("\e[1;33mCHILD STATUS: %d\e[m\n", WEXITSTATUS(status));
+        }
+      } else { // Child
+        if (execvp(list[0], list) == -1) {
+          die("execvp:");
+        }
       }
 
       token_vec_deep_free(vec, list);

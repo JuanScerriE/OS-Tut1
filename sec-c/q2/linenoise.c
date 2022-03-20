@@ -176,8 +176,6 @@ static void linenoiseAtExit(void);
 int linenoiseHistoryAdd(const char *line);
 static void refreshLine(struct linenoiseState *l);
 
-/* #define DEBUG */
-
 /* Debugging macro. */
 #if 0
 FILE *lndebug_fp = NULL;
@@ -197,7 +195,7 @@ FILE *lndebug_fp = NULL;
 #define lndebug(fmt, ...)
 #endif
 
-#ifdef DEBUG
+#if 0
 FILE *lndbg_fp = NULL;
 #define lndbg(fmt, ...)                                                        \
   {                                                                            \
