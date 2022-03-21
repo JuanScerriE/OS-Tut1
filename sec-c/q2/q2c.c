@@ -297,7 +297,8 @@ char *sh_launch(char **args, bool *continue_loop) {
     *continue_loop = true;
   } else { // Child
     if (execvp(args[0], args) == -1) {
-      die("execvp:");
+      perror("execvp");
+      *continue_loop = false;
     }
   }
 
@@ -306,19 +307,48 @@ char *sh_launch(char **args, bool *continue_loop) {
 
 char *prompt_init(const char *prompt) {
   size_t size = strlen(prompt);
-  char *dy_prompt = emalloc(sizeof(char) * size);
-  strncpy(dy_prompt, prompt, size);
+  char *dy_prompt = emalloc(sizeof(char) * (size + 1));
+  strncpy(dy_prompt, prompt, size + 1);
   return dy_prompt;
 }
 
+// Prompt can definitely be handled better. Plus
+// you would really need a good parser to make the
+// prompt better and more customisable.
 char *prompt_update(char *prompt, char *command) {
   size_t prompt_size = strlen(prompt);
   size_t command_size = strlen(command);
-  char *dy_prompt = emalloc(sizeof(char) * (prompt_size + command_size));
+  char *dy_prompt = emalloc(sizeof(char) * (prompt_size + command_size + 1));
+  /*
+   * This is an example of how it is being done.
+   *
+   * Consider these two null-terminated strings:
+   *
+   * Hello\0 and World\0
+   *
+   *           0 1 2 3 4 5
+   * 0 1 2 3 4 5 6 7 8 9 10
+   * H e l l o W o r l d \0
+   * ^         ^       ^  ^
+   * |         |       |  `- dy_prompt + command_size + prompt_size + 1
+   * |         |       |
+   * |         |       `- dy_prompt + command_size + prompt_size
+   * |         |
+   * |         `- dy_prompt + command_size
+   * |
+   * `- dy_prompt
+   */
   strncpy(dy_prompt, command, command_size);
-  strncpy(dy_prompt + command_size, prompt, prompt_size);
+  strncpy(dy_prompt + command_size, prompt,
+          prompt_size + 1); // + 1 to padd at the end with \0
   return dy_prompt;
 }
+
+/*
+ * I should also take into consideration the possible benefit of
+ * using a fixed amount of memory approach. It is really not
+ * ideal. But it is possible and could technically work.
+ */
 
 int main(void) {
   bool continue_loop = true;
@@ -334,6 +364,7 @@ int main(void) {
       vec = tokenise(line);
       args = token_vec_get_list(vec);
       command = sh_launch(args, &continue_loop);
+      free(prompt);
       prompt = prompt_update(" > ", command);
       token_vec_deep_free(vec, args);
     }
