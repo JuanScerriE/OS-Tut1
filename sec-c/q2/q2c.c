@@ -99,9 +99,9 @@ void token_append(struct token *tok, char ch) {
 }
 
 struct token_vec {
-  struct token **arr;
-  size_t len;
-  size_t alc;
+  struct token **arr; /* pointer to array of token pointers */
+  size_t len;         /* length of the current array */
+  size_t alc;         /* allocated size of array */
 };
 
 void token_vec_grow(struct token_vec *vec, size_t need) {
@@ -270,39 +270,78 @@ struct token_vec *tokenise(char *line) {
   return vec;
 }
 
-int main(void) {
-  char *line;
-  struct token_vec *vec;
-  char **list;
-  pid_t fork_pid;
+bool sh_exit(char **args) { return false; }
+
+char *builtins_str[] = {"exit", NULL};
+
+bool (*builtins_func[])(char **) = {&sh_exit};
+
+char *sh_launch(char **args, bool *continue_loop) {
+  pid_t pid;
   int status;
 
-  while ((line = linenoise("> ")) != NULL) {
+  for (size_t i = 0; builtins_str[i] != NULL; i++) {
+    if (!strcmp(args[0], builtins_str[i])) {
+      *continue_loop = builtins_func[i](args);
+      return args[0];
+    }
+  }
+
+  if ((pid = fork()) == -1) {
+    perror("fork");
+  } else if (pid > 0) { // Parent
+    if (waitpid(pid, &status, 0) == -1) {
+      perror("waitpid");
+    }
+
+    *continue_loop = true;
+  } else { // Child
+    if (execvp(args[0], args) == -1) {
+      die("execvp:");
+    }
+  }
+
+  return args[0];
+}
+
+char *prompt_init(const char *prompt) {
+  size_t size = strlen(prompt);
+  char *dy_prompt = emalloc(sizeof(char) * size);
+  strncpy(dy_prompt, prompt, size);
+  return dy_prompt;
+}
+
+char *prompt_update(char *prompt, char *command) {
+  size_t prompt_size = strlen(prompt);
+  size_t command_size = strlen(command);
+  char *dy_prompt = emalloc(sizeof(char) * (prompt_size + command_size));
+  strncpy(dy_prompt, command, command_size);
+  strncpy(dy_prompt + command_size, prompt, prompt_size);
+  return dy_prompt;
+}
+
+int main(void) {
+  bool continue_loop = true;
+  char *line;
+  char *command;
+  char **args;
+  struct token_vec *vec;
+
+  char *prompt = prompt_init("> ");
+
+  while (continue_loop == true && (line = linenoise(prompt)) != NULL) {
     if (*line != '\0') {
       vec = tokenise(line);
-      list = token_vec_get_list(vec);
-
-      if ((fork_pid = fork()) == -1) {
-        die("fork:");
-      } else if (fork_pid > 0) { // Parent
-        if (waitpid(fork_pid, &status, 0) == -1) {
-          die("waitpid:");
-        }
-
-        if (WIFEXITED(status)) {
-          printf("\e[1;33mCHILD STATUS: %d\e[m\n", WEXITSTATUS(status));
-        }
-      } else { // Child
-        if (execvp(list[0], list) == -1) {
-          die("execvp:");
-        }
-      }
-
-      token_vec_deep_free(vec, list);
+      args = token_vec_get_list(vec);
+      command = sh_launch(args, &continue_loop);
+      prompt = prompt_update(" > ", command);
+      token_vec_deep_free(vec, args);
     }
 
     free(line);
   }
+
+  free(prompt);
 
   return 0;
 }
